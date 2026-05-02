@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Divitiae EOD Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #E8C96A;
+    --gold-dim: #7a6530;
+    --bg: #080808;
+    --bg2: #0f0f0f;
+    --bg3: #161616;
+    --bg4: #1e1e1e;
+    --border: #2a2a2a;
+    --text: #d4d4d4;
+    --text-dim: #666;
+    --green: #3ddc84;
+    --red: #ff5f5f;
+    --amber: #ffb347;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── SCANLINE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--gold-dim);
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(180deg, #0d0d0d 0%, var(--bg) 100%);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  .brand-name {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: 0.08em;
+  }
+
+  .brand-sub {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  .header-meta {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .scan-time {
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+
+  /* ── SUMMARY CARDS ── */
+  .summary-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .card {
+    background: var(--bg2);
+    padding: 16px 20px;
+    text-align: center;
+  }
+
+  .card-val {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--gold);
+  }
+
+  .card-label {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+
+  .card.prime .card-val { color: #ff9500; }
+  .card.strong .card-val { color: var(--gold-light); }
+  .card.nr7 .card-val { color: var(--green); }
+
+  /* ── FILTERS ── */
+  .filters {
+    display: flex;
+    gap: 8px;
+    padding: 12px 24px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .filter-label {
+    color: var(--text-dim);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-right: 4px;
+  }
+
+  .filter-btn {
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    letter-spacing: 0.1em;
+    transition: all 0.15s;
+    border-radius: 2px;
+  }
+
+  .filter-btn:hover, .filter-btn.active {
+    border-color: var(--gold);
+    color: var(--gold);
+    background: rgba(201,168,76,0.08);
+  }
+
+  .search-box {
+    margin-left: auto;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 5px 12px;
+    border-radius: 2px;
+    width: 180px;
+    outline: none;
+  }
+
+  .search-box:focus { border-color: var(--gold-dim); }
+  .search-box::placeholder { color: var(--text-dim); }
+
+  /* ── TABLE ── */
+  .table-wrap {
+    overflow-x: auto;
+    padding: 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  thead th {
+    background: var(--bg3);
+    color: var(--gold-dim);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  thead th:hover { color: var(--gold); }
+
+  tbody tr {
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    transition: background 0.1s;
+  }
+
+  tbody tr:hover { background: rgba(201,168,76,0.04); }
+
+  td {
+    padding: 9px 14px;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  /* Symbol column */
+  .sym {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: #e8e8e8;
+    letter-spacing: 0.05em;
+  }
+
+  .price { color: var(--gold-light); font-weight: 500; }
+
+  /* Score badge */
+  .score-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 12px;
+  }
+
+  .score-7 { background: #ff9500; color: #000; }
+  .score-6 { background: #ff9500aa; color: #fff; }
+  .score-5 { background: var(--gold-dim); color: var(--gold-light); }
+  .score-4 { background: var(--bg4); color: var(--text-dim); border: 1px solid var(--border); }
+  .score-3 { background: var(--bg4); color: var(--text-dim); border: 1px solid var(--border); }
+
+  /* Signal badges */
+  .signal {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  .sig-prime  { background: rgba(255,149,0,0.15); color: #ff9500; border: 1px solid rgba(255,149,0,0.3); }
+  .sig-strong { background: rgba(201,168,76,0.12); color: var(--gold); border: 1px solid var(--gold-dim); }
+  .sig-watch  { background: rgba(255,255,255,0.05); color: var(--text-dim); border: 1px solid var(--border); }
+
+  /* Indicator pills */
+  .pill {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 2px;
+    font-size: 9px;
+  }
+  .pill-yes { background: rgba(61,220,132,0.1); color: var(--green); }
+  .pill-no  { background: rgba(255,95,95,0.08); color: #ff5f5f55; }
+  .pill-nr7 { background: rgba(61,220,132,0.2); color: var(--green); font-weight: 700; }
+  .pill-nr7ib { background: rgba(255,149,0,0.2); color: #ff9500; font-weight: 700; }
+
+  /* RS bar */
+  .rs-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .rs-bar {
+    width: 50px;
+    height: 4px;
+    background: var(--bg4);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .rs-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+    border-radius: 2px;
+  }
+
+  /* Entry/SL */
+  .entry-price { color: var(--green); }
+  .sl-price    { color: var(--red); }
+  .risk-pct    { color: var(--text-dim); }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--text-dim);
+  }
+
+  .empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.3;
+  }
+
+  /* ── LOADING ── */
+  .loading {
+    text-align: center;
+    padding: 60px;
+    color: var(--gold-dim);
+    font-size: 13px;
+    letter-spacing: 0.2em;
+  }
+
+  .loading::after {
+    content: '';
+    animation: dots 1.5s infinite;
+  }
+
+  @keyframes dots {
+    0%   { content: '.'; }
+    33%  { content: '..'; }
+    66%  { content: '...'; }
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-dim);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ── MOBILE ── */
+  @media (max-width: 768px) {
+    header { padding: 14px 16px; }
+    .brand-name { font-size: 18px; }
+    .filters { padding: 10px 16px; }
+    td, th { padding: 8px 10px; }
+    .search-box { width: 140px; }
+    .summary-bar { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="brand-name">DIVITIAE</span>
+    <span class="brand-sub">EOD Scanner · SEBI RA INH000023597</span>
+  </div>
+  <div class="header-meta">
+    <div class="status-dot"></div>
+    <span class="scan-time" id="scanTime">Loading...</span>
+    <span style="color:var(--text-dim);font-size:10px;">Nifty 500 Universe</span>
+  </div>
+</header>
+
+<div class="summary-bar">
+  <div class="card">
+    <div class="card-val" id="totalCount">—</div>
+    <div class="card-label">Stocks Scanned</div>
+  </div>
+  <div class="card prime">
+    <div class="card-val" id="primeCount">—</div>
+    <div class="card-label">🔥 Prime Setups</div>
+  </div>
+  <div class="card strong">
+    <div class="card-val" id="strongCount">—</div>
+    <div class="card-label">⭐ Strong</div>
+  </div>
+  <div class="card nr7">
+    <div class="card-val" id="nr7Count">—</div>
+    <div class="card-label">NR7 Triggers</div>
+  </div>
+  <div class="card">
+    <div class="card-val" id="nr7ibCount">—</div>
+    <div class="card-label">NR7 + IB 🔥</div>
+  </div>
+</div>
+
+<div class="filters">
+  <span class="filter-label">Filter:</span>
+  <button class="filter-btn active" onclick="filterData('all', this)">All</button>
+  <button class="filter-btn" onclick="filterData('prime', this)">🔥 Prime</button>
+  <button class="filter-btn" onclick="filterData('strong', this)">⭐ Strong</button>
+  <button class="filter-btn" onclick="filterData('nr7', this)">NR7</button>
+  <button class="filter-btn" onclick="filterData('nr7ib', this)">NR7+IB</button>
+  <button class="filter-btn" onclick="filterData('ema', this)">EMA Stack</button>
+  <input class="search-box" type="text" placeholder="Search symbol..." oninput="searchData(this.value)">
+</div>
+
+<div class="table-wrap">
+  <div class="loading" id="loadingMsg">Fetching scan data</div>
+  <table id="mainTable" style="display:none">
+    <thead>
+      <tr>
+        <th onclick="sortTable('symbol')">Symbol ↕</th>
+        <th onclick="sortTable('score')">Score ↕</th>
+        <th onclick="sortTable('close')">Close ↕</th>
+        <th>EMA Stack</th>
+        <th onclick="sortTable('pct_from_52w')">52W High ↕</th>
+        <th>Vol ▼</th>
+        <th>ATR ▼</th>
+        <th>NR7</th>
+        <th onclick="sortTable('rs_score')">RS Score ↕</th>
+        <th>Entry</th>
+        <th>Stop Loss</th>
+        <th>Risk %</th>
+        <th>Signal</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+  <div class="empty-state" id="emptyState" style="display:none">
+    <div class="empty-icon">📊</div>
+    <div>No stocks match this filter today</div>
+  </div>
+</div>
+
+<footer>
+  <span>DIVITIAE INVESTMENTS · For registered subscribers only</span>
+  <span>Data: NSE via yfinance · Refreshes daily at 16:30 IST</span>
+  <span>Not investment advice. SEBI RA INH000023597</span>
+</footer>
+
+<script>
+// ─────────────────────────────────────────────
+// CONFIG — Update SHEET_ID and API_KEY below
+// ─────────────────────────────────────────────
+const SHEET_ID  = "1RqBkeuLoLz5WnUo5SJJ2ttBVmb3Jc-9tow7F2zawISw";
+const TAB_NAME  = "EOD_SCAN";
+// You'll add a read-only Google Sheets API key here after setup
+// Get it from: console.cloud.google.com → APIs → Credentials → API Key
+// Restrict it to: Google Sheets API + HTTP referrers (your GitHub Pages URL)
+const API_KEY   = "YOUR_SHEETS_API_KEY_HERE";
+
+let allData = [];
+let currentFilter = 'all';
+let sortCol = 'score';
+let sortDir = -1; // -1 = desc
+
+// ─────────────────────────────────────────────
+// FETCH FROM GOOGLE SHEETS
+// ─────────────────────────────────────────────
+async function loadData() {
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${TAB_NAME}?key=${API_KEY}`;
+    const res  = await fetch(url);
+    
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    
+    const json = await res.json();
+    const rows = json.values || [];
+    
+    if (rows.length < 2) {
+      showEmpty("No scan data yet. Scanner runs at 16:30 IST on market days.");
+      return;
+    }
+    
+    const headers = rows[0];
+    const colIdx  = {};
+    headers.forEach((h, i) => colIdx[h.trim()] = i);
+    
+    allData = rows.slice(1).map(row => ({
+      scan_date:      row[colIdx["Scan Date"]]       || "",
+      symbol:         row[colIdx["Symbol"]]           || "",
+      close:          parseFloat(row[colIdx["Close"]]) || 0,
+      ema20:          parseFloat(row[colIdx["EMA20"]]) || 0,
+      ema50:          parseFloat(row[colIdx["EMA50"]]) || 0,
+      ema200:         parseFloat(row[colIdx["EMA200"]]) || 0,
+      ema_stack:      row[colIdx["EMA Stack ✅"]] === "✅",
+      pct_from_52w:   parseFloat(row[colIdx["52W High %"]]) || 0,
+      near_52w:       row[colIdx["Near 52W ✅"]] === "✅",
+      vol_ratio:      parseFloat(row[colIdx["Vol Ratio"]]) || 0,
+      vol_contracted: row[colIdx["Vol Contract ✅"]] === "✅",
+      atr_ratio:      parseFloat(row[colIdx["ATR Ratio"]]) || 0,
+      atr_contracted: row[colIdx["ATR Contract ✅"]] === "✅",
+      nr7:            row[colIdx["NR7 ✅"]] === "✅",
+      inside_bar:     row[colIdx["Inside Bar"]] === "✅",
+      nr7_ib:         row[colIdx["NR7+IB 🔥"]] === "🔥",
+      rs_score:       parseFloat(row[colIdx["RS Score"]]) || 0,
+      entry_trigger:  parseFloat(row[colIdx["Entry Trigger"]]) || 0,
+      stop_loss:      parseFloat(row[colIdx["Stop Loss"]]) || 0,
+      risk_pct:       parseFloat(row[colIdx["Risk %"]]) || 0,
+      score:          parseInt(row[colIdx["SCORE /7"]]) || 0,
+      signal:         row[colIdx["SIGNAL"]] || "",
+    }));
+
+    updateSummary();
+    updateScanTime(allData[0]?.scan_date || "");
+    renderTable(allData);
+    
+    document.getElementById('loadingMsg').style.display = 'none';
+    document.getElementById('mainTable').style.display = 'table';
+    
+  } catch(e) {
+    document.getElementById('loadingMsg').textContent = 
+      `⚠ Could not load data. Check API key configuration. (${e.message})`;
+  }
+}
+
+// ─────────────────────────────────────────────
+// RENDER TABLE
+// ─────────────────────────────────────────────
+function renderTable(data) {
+  const tbody = document.getElementById('tableBody');
+  
+  if (!data.length) {
+    tbody.innerHTML = '';
+    document.getElementById('emptyState').style.display = 'block';
+    document.getElementById('mainTable').style.display = 'none';
+    return;
+  }
+  
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('mainTable').style.display  = 'table';
+  
+  // Sort
+  data = [...data].sort((a, b) => (a[sortCol] > b[sortCol] ? 1 : -1) * sortDir);
+  
+  tbody.innerHTML = data.map(r => {
+    const scoreClass = `score-${Math.min(r.score, 7)}`;
+    const rsPct = Math.min(100, Math.max(0, ((r.rs_score + 50) / 100) * 100));
+    
+    const sigClass = r.score >= 6 ? 'sig-prime' : r.score === 5 ? 'sig-strong' : 'sig-watch';
+    const sigText  = r.score >= 6 ? '🔥 Prime' : r.score === 5 ? '⭐ Strong' : '👀 Watch';
+    
+    const nr7Cell = r.nr7_ib 
+      ? `<span class="pill pill-nr7ib">NR7+IB</span>`
+      : r.nr7 
+        ? `<span class="pill pill-nr7">NR7</span>`
+        : `<span class="pill pill-no">—</span>`;
+    
+    const riskPct = r.entry_trigger > 0 
+      ? (((r.entry_trigger - r.stop_loss) / r.entry_trigger) * 100).toFixed(1)
+      : "—";
+    
+    return `<tr data-score="${r.score}" data-nr7="${r.nr7}" data-nr7ib="${r.nr7_ib}" data-ema="${r.ema_stack}" data-sym="${r.symbol}">
+      <td class="sym">${r.symbol}</td>
+      <td><span class="score-badge ${scoreClass}">${r.score}</span></td>
+      <td class="price">₹${r.close.toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+      <td>${r.ema_stack ? '<span class="pill pill-yes">✅ Bull</span>' : '<span class="pill pill-no">❌</span>'}</td>
+      <td style="color:${r.pct_from_52w <= 5 ? 'var(--green)' : r.pct_from_52w <= 10 ? 'var(--gold)' : 'var(--text-dim)'}">
+        ${r.pct_from_52w.toFixed(1)}%
+      </td>
+      <td>${r.vol_contracted ? '<span class="pill pill-yes">▼ Low</span>' : '<span class="pill pill-no">—</span>'}</td>
+      <td>${r.atr_contracted ? '<span class="pill pill-yes">▼ Coil</span>' : '<span class="pill pill-no">—</span>'}</td>
+      <td>${nr7Cell}</td>
+      <td>
+        <div class="rs-bar-wrap">
+          <div class="rs-bar"><div class="rs-fill" style="width:${rsPct}%"></div></div>
+          <span style="color:${r.rs_score > 20 ? 'var(--green)' : r.rs_score > 0 ? 'var(--gold)' : 'var(--text-dim)'}">${r.rs_score?.toFixed(1)}</span>
+        </div>
+      </td>
+      <td class="entry-price">${r.entry_trigger > 0 ? '₹' + r.entry_trigger.toFixed(2) : '—'}</td>
+      <td class="sl-price">${r.stop_loss > 0 ? '₹' + r.stop_loss.toFixed(2) : '—'}</td>
+      <td class="risk-pct">${riskPct}%</td>
+      <td><span class="signal ${sigClass}">${sigText}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────────
+// FILTER & SEARCH
+// ─────────────────────────────────────────────
+function filterData(type, btn) {
+  currentFilter = type;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+function searchData(val) {
+  applyFilters(val);
+}
+
+function applyFilters(searchVal) {
+  const q = (searchVal || document.querySelector('.search-box').value).toUpperCase();
+  let data = allData.filter(r => {
+    if (q && !r.symbol.includes(q)) return false;
+    if (currentFilter === 'prime')  return r.score >= 6;
+    if (currentFilter === 'strong') return r.score === 5;
+    if (currentFilter === 'nr7')    return r.nr7;
+    if (currentFilter === 'nr7ib')  return r.nr7_ib;
+    if (currentFilter === 'ema')    return r.ema_stack;
+    return true;
+  });
+  renderTable(data);
+}
+
+// ─────────────────────────────────────────────
+// SORT
+// ─────────────────────────────────────────────
+function sortTable(col) {
+  if (sortCol === col) sortDir *= -1;
+  else { sortCol = col; sortDir = -1; }
+  applyFilters();
+}
+
+// ─────────────────────────────────────────────
+// SUMMARY CARDS
+// ─────────────────────────────────────────────
+function updateSummary() {
+  document.getElementById('totalCount').textContent = allData.length;
+  document.getElementById('primeCount').textContent = allData.filter(r => r.score >= 6).length;
+  document.getElementById('strongCount').textContent = allData.filter(r => r.score === 5).length;
+  document.getElementById('nr7Count').textContent = allData.filter(r => r.nr7).length;
+  document.getElementById('nr7ibCount').textContent = allData.filter(r => r.nr7_ib).length;
+}
+
+function updateScanTime(date) {
+  document.getElementById('scanTime').textContent = `Last scan: ${date || 'Today'} · 16:30 IST`;
+}
+
+function showEmpty(msg) {
+  document.getElementById('loadingMsg').textContent = msg;
+}
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+loadData();
+
+// Auto-refresh every 30 min
+setInterval(loadData, 30 * 60 * 1000);
+</script>
+
+</body>
+</html>
