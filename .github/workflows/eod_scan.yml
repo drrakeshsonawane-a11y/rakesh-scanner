@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+         pip install pandas numpy yfinance gspread google-auth requests
 
       - name: Run EOD Scanner
         env:
