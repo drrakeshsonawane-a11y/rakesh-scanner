@@ -68,20 +68,50 @@ def get_nifty500_symbols():
 # MODULE 2: FETCH HISTORICAL DATA
 # ─────────────────────────────────────────────
 def fetch_stock_data(symbol, days=LOOKBACK_DAYS):
-    """Fetch historical OHLCV from NSE via yfinance fallback"""
+    """Fetch historical OHLCV from NSE via yfinance"""
     try:
         import yfinance as yf
         ticker = f"{symbol}.NS"
         end = datetime.today()
         start = end - timedelta(days=days + 50)
-        df = yf.download(ticker, start=start, end=end, progress=False, auto_adjust=True)
+        df = yf.download(ticker, start=start, end=end, progress=False,
+                         auto_adjust=True, group_by='column')
         if df.empty or len(df) < 50:
             return None
-        df = df.rename(columns={"Open":"open","High":"high","Low":"low",
-                                  "Close":"close","Volume":"volume"})
-        df = df[["open","high","low","close","volume"]].copy()
+        
+        # Fix multi-level columns from yfinance (common with newer versions)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        
+        # Normalize column names
+        df.columns = [c.lower().strip() for c in df.columns]
+        
+        # Ensure required columns exist
+        col_map = {}
+        for col in df.columns:
+            if 'open' in col:   col_map[col] = 'open'
+            elif 'high' in col:  col_map[col] = 'high'
+            elif 'low' in col:   col_map[col] = 'low'
+            elif 'close' in col: col_map[col] = 'close'
+            elif 'volume' in col:col_map[col] = 'volume'
+        df = df.rename(columns=col_map)
+        
+        required = ['open','high','low','close','volume']
+        if not all(c in df.columns for c in required):
+            return None
+        
+        df = df[required].copy()
+        df = df[pd.to_numeric(df['close'], errors='coerce').notna()]
+        df = df.astype(float)
         df.dropna(inplace=True)
+        
+        if len(df) < 50:
+            return None
+        
+        # Reset index to avoid Series label issues
+        df = df.reset_index(drop=True)
         return df
+        
     except Exception as e:
         return None
 
