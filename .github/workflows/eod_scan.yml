@@ -1,19 +1,26 @@
-name: Divitiae EOD Scanner
+name: RakeshGold Scanner
 
 on:
   schedule:
     # 16:30 IST = 11:00 UTC (Mon-Fri)
     - cron: '0 11 * * 1-5'
+    # Backup trigger 15 min later in case GitHub delays the first run
+    - cron: '15 11 * * 1-5'
   workflow_dispatch:   # allows manual trigger from GitHub UI
+
+permissions:
+  contents: write      # required to commit + push CSV outputs
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -30,10 +37,10 @@ jobs:
         run: |
           python scripts/scanner.py
 
-      - name: Commit CSV output (optional backup)
+      - name: Commit CSV output (keeps repo active for scheduled workflow)
         run: |
-          git config --local user.email "scanner@divitiae.com"
-          git config --local user.name "Divitiae Scanner Bot"
+          git config --local user.email "rakeshgold-scanner@users.noreply.github.com"
+          git config --local user.name "RakeshGold Scanner Bot"
           git add outputs/ || true
           git diff --staged --quiet || git commit -m "EOD Scan $(date +'%Y-%m-%d')"
-          git push || true
+          git push origin HEAD

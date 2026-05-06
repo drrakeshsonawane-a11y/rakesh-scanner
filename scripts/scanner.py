@@ -1,5 +1,5 @@
 """
-Divitiae EOD Scanner
+RakeshGold Scanner
 Author: Rakesh
 Modules: Bhavcopy Download → EMA Stack → RS Rank → VCP → NR7 → Score → Sheets Push
 Runs daily at 16:30 IST via GitHub Actions
@@ -193,21 +193,22 @@ def calc_rs_score(df, skip_recent=1):
 # ─────────────────────────────────────────────
 def check_volume_contraction(df):
     """
-    True if recent 5-day avg volume < 60% of 50-day avg volume
+    True if recent 5-day avg volume < 60% of 50-day avg volume (non-overlapping windows)
     Signals institutional quiet / accumulation phase
     """
     if len(df) < VOL_MA_DAYS + VOL_CONTRACT_DAYS:
         return False, {}
-    
-    vol_ma50    = df['volume'].tail(VOL_MA_DAYS).mean()
-    vol_recent5 = df['volume'].tail(VOL_CONTRACT_DAYS).mean()
-    
-    if vol_ma50 == 0:
+
+    # Baseline uses days before the recent window to avoid overlap
+    vol_baseline = df['volume'].iloc[-(VOL_MA_DAYS + VOL_CONTRACT_DAYS):-VOL_CONTRACT_DAYS].mean()
+    vol_recent   = df['volume'].tail(VOL_CONTRACT_DAYS).mean()
+
+    if vol_baseline == 0:
         return False, {}
-    
-    ratio = round(vol_recent5 / vol_ma50, 2)
+
+    ratio = round(vol_recent / vol_baseline, 2)
     contracted = ratio < 0.60
-    
+
     return contracted, {'vol_ratio': ratio, 'vol_contracted': contracted}
 
 
@@ -399,7 +400,7 @@ def push_to_sheets(results_df, scan_date):
         nr7_all = results_df[results_df['nr7'] == True]
         
         summary = [
-            ["DIVITIAE EOD SCANNER", scan_date],
+            ["RAKESHGOLD SCANNER", scan_date],
             [""],
             ["Total Stocks Scanned",  len(results_df)],
             ["🔥 PRIME SETUPS (6-7)", len(prime)],
@@ -436,7 +437,7 @@ def push_to_sheets(results_df, scan_date):
 def run_scanner():
     scan_date = datetime.now().strftime("%d-%b-%Y")
     print(f"\n{'='*60}")
-    print(f"  DIVITIAE EOD SCANNER — {scan_date}")
+    print(f"  RAKESHGOLD SCANNER — {scan_date}")
     print(f"{'='*60}\n")
     
     symbols = get_nifty500_symbols()
@@ -497,9 +498,10 @@ def run_scanner():
     results_df = pd.DataFrame(results)
     
     # Apply RS rank filter — keep top RS_TOP_PCT percentile
-    if rs_score is not None:
-        rs_threshold = results_df['rs_score'].dropna().quantile(1 - RS_TOP_PCT/100)
-        results_df = results_df[results_df['rs_score'] >= rs_threshold]
+    rs_valid = results_df['rs_score'].dropna()
+    if len(rs_valid) > 0:
+        rs_threshold = rs_valid.quantile(1 - RS_TOP_PCT / 100)
+        results_df = results_df[results_df['rs_score'].notna() & (results_df['rs_score'] >= rs_threshold)]
     
     # Sort by score desc, then RS desc
     results_df = results_df.sort_values(['score','rs_score'], ascending=[False, False])
