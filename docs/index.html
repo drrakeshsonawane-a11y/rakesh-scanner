@@ -141,9 +141,9 @@
     margin-top: 6px;
   }
 
-  .card.prime .card-val { color: #ff9500; }
+  .card.prime .card-val  { color: #ff9500; }
   .card.strong .card-val { color: var(--gold-light); }
-  .card.nr7 .card-val { color: var(--green); }
+  .card.nr7 .card-val    { color: var(--green); }
 
   /* ── FILTERS ── */
   .filters {
@@ -240,7 +240,6 @@
     vertical-align: middle;
   }
 
-  /* Symbol column */
   .sym {
     font-family: 'Cormorant Garamond', serif;
     font-size: 15px;
@@ -262,9 +261,11 @@
     font-size: 12px;
   }
 
-  .score-7 { background: #ff9500; color: #000; }
-  .score-6 { background: #ff9500aa; color: #fff; }
-  .score-5 { background: var(--gold-dim); color: var(--gold-light); }
+  .score-9 { background: #ff3000; color: #fff; }
+  .score-8 { background: #ff9500; color: #000; }
+  .score-7 { background: rgba(255,149,0,0.65); color: #fff; }
+  .score-6 { background: var(--gold-dim); color: var(--gold-light); }
+  .score-5 { background: var(--bg4); color: var(--gold); border: 1px solid var(--gold-dim); }
   .score-4 { background: var(--bg4); color: var(--text-dim); border: 1px solid var(--border); }
   .score-3 { background: var(--bg4); color: var(--text-dim); border: 1px solid var(--border); }
 
@@ -290,10 +291,10 @@
     border-radius: 2px;
     font-size: 9px;
   }
-  .pill-yes { background: rgba(61,220,132,0.1); color: var(--green); }
-  .pill-no  { background: rgba(255,95,95,0.08); color: #ff5f5f55; }
-  .pill-nr7 { background: rgba(61,220,132,0.2); color: var(--green); font-weight: 700; }
-  .pill-nr7ib { background: rgba(255,149,0,0.2); color: #ff9500; font-weight: 700; }
+  .pill-yes   { background: rgba(61,220,132,0.1);  color: var(--green); }
+  .pill-no    { background: rgba(255,95,95,0.08);  color: #ff5f5f55; }
+  .pill-nr7   { background: rgba(61,220,132,0.2);  color: var(--green); font-weight: 700; }
+  .pill-nr7ib { background: rgba(255,149,0,0.2);   color: #ff9500; font-weight: 700; }
 
   /* RS bar */
   .rs-bar-wrap {
@@ -315,6 +316,10 @@
     background: linear-gradient(90deg, var(--gold-dim), var(--gold));
     border-radius: 2px;
   }
+
+  /* RSI cells */
+  .rsi-warn { color: var(--amber) !important; font-weight: 600; }
+  .rsi-ob   { color: var(--red)   !important; font-weight: 700; }
 
   /* Entry/SL */
   .entry-price { color: var(--green); }
@@ -399,11 +404,11 @@
   </div>
   <div class="card prime">
     <div class="card-val" id="primeCount">—</div>
-    <div class="card-label">🔥 Prime Setups</div>
+    <div class="card-label">🔥 Prime (8-9)</div>
   </div>
   <div class="card strong">
     <div class="card-val" id="strongCount">—</div>
-    <div class="card-label">⭐ Strong</div>
+    <div class="card-label">⭐ Strong (6-7)</div>
   </div>
   <div class="card nr7">
     <div class="card-val" id="nr7Count">—</div>
@@ -432,14 +437,16 @@
     <thead>
       <tr>
         <th onclick="sortTable('symbol')">Symbol ↕</th>
-        <th onclick="sortTable('score')">Score ↕</th>
+        <th onclick="sortTable('score')">Score /9 ↕</th>
         <th onclick="sortTable('close')">Close ↕</th>
         <th>EMA Stack</th>
         <th onclick="sortTable('pct_from_52w')">52W High ↕</th>
         <th>Vol ▼</th>
         <th>ATR ▼</th>
         <th>NR7</th>
-        <th onclick="sortTable('rs_score')">RS Score ↕</th>
+        <th onclick="sortTable('rs_rank')">RS Rank ↕</th>
+        <th onclick="sortTable('daily_rsi')">D.RSI ↕</th>
+        <th onclick="sortTable('weekly_rsi')">W.RSI ↕</th>
         <th>Entry</th>
         <th>Stop Loss</th>
         <th>Risk %</th>
@@ -462,19 +469,16 @@
 
 <script>
 // ─────────────────────────────────────────────
-// CONFIG — Update SHEET_ID and API_KEY below
+// CONFIG
 // ─────────────────────────────────────────────
-const SHEET_ID  = "1RqBkeuLoLz5WnUo5SJJ2ttBVmb3Jc-9tow7F2zawISw";
-const TAB_NAME  = "EOD_SCAN";
-// You'll add a read-only Google Sheets API key here after setup
-// Get it from: console.cloud.google.com → APIs → Credentials → API Key
-// Restrict it to: Google Sheets API + HTTP referrers (your GitHub Pages URL)
-const API_KEY   = "AIzaSyBnPzbNW0bneGgdRHzJ_4sxC17qplCks0w";
+const SHEET_ID = "1RqBkeuLoLz5WnUo5SJJ2ttBVmb3Jc-9tow7F2zawISw";
+const TAB_NAME = "EOD_SCAN";
+const API_KEY  = "AIzaSyBnPzbNW0bneGgdRHzJ_4sxC17qplCks0w";
 
-let allData = [];
+let allData      = [];
 let currentFilter = 'all';
-let sortCol = 'score';
-let sortDir = -1; // -1 = desc
+let sortCol      = 'score';
+let sortDir      = -1;
 
 // ─────────────────────────────────────────────
 // FETCH FROM GOOGLE SHEETS
@@ -483,24 +487,24 @@ async function loadData() {
   try {
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${TAB_NAME}?key=${API_KEY}`;
     const res  = await fetch(url);
-    
+
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    
+
     const json = await res.json();
     const rows = json.values || [];
-    
+
     if (rows.length < 2) {
       showEmpty("No scan data yet. Scanner runs at 16:30 IST on market days.");
       return;
     }
-    
+
     const headers = rows[0];
     const colIdx  = {};
     headers.forEach((h, i) => colIdx[h.trim()] = i);
-    
+
     allData = rows.slice(1).map(row => ({
-      scan_date:      row[colIdx["Scan Date"]]       || "",
-      symbol:         row[colIdx["Symbol"]]           || "",
+      scan_date:      row[colIdx["Scan Date"]]        || "",
+      symbol:         row[colIdx["Symbol"]]            || "",
       close:          parseFloat(row[colIdx["Close"]]) || 0,
       ema20:          parseFloat(row[colIdx["EMA20"]]) || 0,
       ema50:          parseFloat(row[colIdx["EMA50"]]) || 0,
@@ -515,23 +519,26 @@ async function loadData() {
       nr7:            row[colIdx["NR7 ✅"]] === "✅",
       inside_bar:     row[colIdx["Inside Bar"]] === "✅",
       nr7_ib:         row[colIdx["NR7+IB 🔥"]] === "🔥",
-      rs_score:       parseFloat(row[colIdx["RS Score"]]) || 0,
+      rs_rank:        parseInt(row[colIdx["RS Rank"]])   || 0,
+      daily_rsi:      parseFloat(row[colIdx["Daily RSI"]]) || 0,
+      weekly_rsi:     parseFloat(row[colIdx["Weekly RSI"]]) || 0,
+      rsi_alert:      row[colIdx["RSI Alert"]] || "",
       entry_trigger:  parseFloat(row[colIdx["Entry Trigger"]]) || 0,
       stop_loss:      parseFloat(row[colIdx["Stop Loss"]]) || 0,
       risk_pct:       parseFloat(row[colIdx["Risk %"]]) || 0,
-      score:          parseInt(row[colIdx["SCORE /7"]]) || 0,
+      score:          parseInt(row[colIdx["SCORE /9"]]) || 0,
       signal:         row[colIdx["SIGNAL"]] || "",
     }));
 
     updateSummary();
     updateScanTime(allData[0]?.scan_date || "");
     renderTable(allData);
-    
-    document.getElementById('loadingMsg').style.display = 'none';
-    document.getElementById('mainTable').style.display = 'table';
-    
+
+    document.getElementById('loadingMsg').style.display  = 'none';
+    document.getElementById('mainTable').style.display   = 'table';
+
   } catch(e) {
-    document.getElementById('loadingMsg').textContent = 
+    document.getElementById('loadingMsg').textContent =
       `⚠ Could not load data. Check API key configuration. (${e.message})`;
   }
 }
@@ -541,37 +548,54 @@ async function loadData() {
 // ─────────────────────────────────────────────
 function renderTable(data) {
   const tbody = document.getElementById('tableBody');
-  
+
   if (!data.length) {
     tbody.innerHTML = '';
-    document.getElementById('emptyState').style.display = 'block';
-    document.getElementById('mainTable').style.display = 'none';
+    document.getElementById('emptyState').style.display  = 'block';
+    document.getElementById('mainTable').style.display   = 'none';
     return;
   }
-  
+
   document.getElementById('emptyState').style.display = 'none';
   document.getElementById('mainTable').style.display  = 'table';
-  
-  // Sort
+
   data = [...data].sort((a, b) => (a[sortCol] > b[sortCol] ? 1 : -1) * sortDir);
-  
+
   tbody.innerHTML = data.map(r => {
-    const scoreClass = `score-${Math.min(r.score, 7)}`;
-    const rsPct = Math.min(100, Math.max(0, ((r.rs_score + 50) / 100) * 100));
-    
-    const sigClass = r.score >= 6 ? 'sig-prime' : r.score === 5 ? 'sig-strong' : 'sig-watch';
-    const sigText  = r.score >= 6 ? '🔥 Prime' : r.score === 5 ? '⭐ Strong' : '👀 Watch';
-    
-    const nr7Cell = r.nr7_ib 
+    const scoreClass = `score-${Math.min(r.score, 9)}`;
+
+    // RS rank bar (1-99 → 0-100%)
+    const rsPct   = r.rs_rank;
+    const rsColor = r.rs_rank >= 85 ? 'var(--green)' : r.rs_rank >= 70 ? 'var(--gold)' : 'var(--text-dim)';
+
+    // Signal
+    const sigClass = r.score >= 8 ? 'sig-prime' : r.score >= 6 ? 'sig-strong' : 'sig-watch';
+    const sigText  = r.score >= 8 ? '🔥 Prime'  : r.score >= 6 ? '⭐ Strong'  : '👀 Watch';
+
+    // NR7 cell
+    const nr7Cell = r.nr7_ib
       ? `<span class="pill pill-nr7ib">NR7+IB</span>`
-      : r.nr7 
+      : r.nr7
         ? `<span class="pill pill-nr7">NR7</span>`
         : `<span class="pill pill-no">—</span>`;
-    
-    const riskPct = r.entry_trigger > 0 
+
+    // Risk %
+    const riskPct = r.entry_trigger > 0
       ? (((r.entry_trigger - r.stop_loss) / r.entry_trigger) * 100).toFixed(1)
       : "—";
-    
+
+    // Daily RSI cell
+    const drsiClass = r.daily_rsi > 80  ? 'rsi-ob' : r.daily_rsi > 70 ? 'rsi-warn' : '';
+    const drsiTxt   = r.daily_rsi > 0
+      ? r.daily_rsi.toFixed(1) + (r.daily_rsi > 80 ? ' ⚠' : '')
+      : '—';
+
+    // Weekly RSI cell
+    const wrsiClass = r.weekly_rsi > 75  ? 'rsi-ob' : r.weekly_rsi > 65 ? 'rsi-warn' : '';
+    const wrsiTxt   = r.weekly_rsi > 0
+      ? r.weekly_rsi.toFixed(1) + (r.weekly_rsi > 75 ? ' ⚠' : '')
+      : '—';
+
     return `<tr data-score="${r.score}" data-nr7="${r.nr7}" data-nr7ib="${r.nr7_ib}" data-ema="${r.ema_stack}" data-sym="${r.symbol}">
       <td class="sym">${r.symbol}</td>
       <td><span class="score-badge ${scoreClass}">${r.score}</span></td>
@@ -586,9 +610,11 @@ function renderTable(data) {
       <td>
         <div class="rs-bar-wrap">
           <div class="rs-bar"><div class="rs-fill" style="width:${rsPct}%"></div></div>
-          <span style="color:${r.rs_score > 20 ? 'var(--green)' : r.rs_score > 0 ? 'var(--gold)' : 'var(--text-dim)'}">${r.rs_score?.toFixed(1)}</span>
+          <span style="color:${rsColor}">${r.rs_rank > 0 ? r.rs_rank : '—'}</span>
         </div>
       </td>
+      <td class="${drsiClass}">${drsiTxt}</td>
+      <td class="${wrsiClass}">${wrsiTxt}</td>
       <td class="entry-price">${r.entry_trigger > 0 ? '₹' + r.entry_trigger.toFixed(2) : '—'}</td>
       <td class="sl-price">${r.stop_loss > 0 ? '₹' + r.stop_loss.toFixed(2) : '—'}</td>
       <td class="risk-pct">${riskPct}%</td>
@@ -615,8 +641,8 @@ function applyFilters(searchVal) {
   const q = (searchVal || document.querySelector('.search-box').value).toUpperCase();
   let data = allData.filter(r => {
     if (q && !r.symbol.includes(q)) return false;
-    if (currentFilter === 'prime')  return r.score >= 6;
-    if (currentFilter === 'strong') return r.score === 5;
+    if (currentFilter === 'prime')  return r.score >= 8;
+    if (currentFilter === 'strong') return r.score >= 6 && r.score <= 7;
     if (currentFilter === 'nr7')    return r.nr7;
     if (currentFilter === 'nr7ib')  return r.nr7_ib;
     if (currentFilter === 'ema')    return r.ema_stack;
@@ -638,11 +664,11 @@ function sortTable(col) {
 // SUMMARY CARDS
 // ─────────────────────────────────────────────
 function updateSummary() {
-  document.getElementById('totalCount').textContent = allData.length;
-  document.getElementById('primeCount').textContent = allData.filter(r => r.score >= 6).length;
-  document.getElementById('strongCount').textContent = allData.filter(r => r.score === 5).length;
-  document.getElementById('nr7Count').textContent = allData.filter(r => r.nr7).length;
-  document.getElementById('nr7ibCount').textContent = allData.filter(r => r.nr7_ib).length;
+  document.getElementById('totalCount').textContent  = allData.length;
+  document.getElementById('primeCount').textContent  = allData.filter(r => r.score >= 8).length;
+  document.getElementById('strongCount').textContent = allData.filter(r => r.score >= 6 && r.score <= 7).length;
+  document.getElementById('nr7Count').textContent    = allData.filter(r => r.nr7).length;
+  document.getElementById('nr7ibCount').textContent  = allData.filter(r => r.nr7_ib).length;
 }
 
 function updateScanTime(date) {
@@ -657,8 +683,6 @@ function showEmpty(msg) {
 // INIT
 // ─────────────────────────────────────────────
 loadData();
-
-// Auto-refresh every 30 min
 setInterval(loadData, 30 * 60 * 1000);
 </script>
 

@@ -1,0 +1,51 @@
+name: Keep Workflows Alive
+
+on:
+  schedule:
+    - cron: '0 6 1 * *'    # 1st of every month
+    - cron: '0 6 15 * *'   # 15th of every month
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4.2.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Re-enable workflows disabled by inactivity
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data } = await github.rest.actions.listRepoWorkflows({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            for (const wf of data.workflows) {
+              if (wf.state === 'disabled_inactivity') {
+                core.notice(`Re-enabling: ${wf.name}`);
+                await github.rest.actions.enableWorkflow({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  workflow_id: wf.id,
+                });
+              } else {
+                core.info(`OK: ${wf.name} (${wf.state})`);
+              }
+            }
+
+      - name: Commit keepalive timestamp
+        run: |
+          git config user.email "rakeshgold-scanner@users.noreply.github.com"
+          git config user.name "RakeshGold Scanner Bot"
+          date -u > .github/keepalive.txt
+          git add .github/keepalive.txt
+          git diff --staged --quiet || git commit -m "chore: keepalive $(date +'%Y-%m')"
+          git push
